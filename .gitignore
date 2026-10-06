@@ -1,0 +1,88 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+.env.backup
+.env.production
+auth.json
+
+# Dependencies and build output
+/vendor/
+/node_modules/
+/public/build/
+/public/hot
+/public/storage
+
+# Laravel runtime files (placeholder .gitignore files stay tracked so the directories exist)
+/storage/*.key
+/storage/logs/*
+!/storage/logs/.gitignore
+/storage/framework/*
+!/storage/framework/.gitignore
+!/storage/framework/cache/
+!/storage/framework/sessions/
+!/storage/framework/testing/
+!/storage/framework/views/
+/storage/app/*
+!/storage/app/.gitignore
+!/storage/app/public/
+/storage/debugbar/*
+/bootstrap/cache/*
+!/bootstrap/cache/.gitignore
+
+# Local databases
+/database/*.sqlite
+/database/*.sqlite3
+
+# Test / tooling caches
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# Temporary files
+*.tmp
+*.zip
+*.swp
+*.swo
+
+# Editors / OS
+.idea/
+.vscode/
+.fleet/
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Android generated / local files
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/.idea/
+/android/local.properties
+
+# Android signing
+*.keystore
+*.jks
+
+# Shell scripts: ignored by default, these are the ones that must be tracked
+*.sh
+!update.sh
+!docker/entrypoint.sh
+!docker/railway-start.sh
+
+# Project-specific exclusions (private / not for this repository)
+/secure_tools
+/app/Mail/LicenseKeyMail.php
+/app/Models/LicensePurchase.php
+/resources/views/emails/license-key.blade.php
+/database/migrations/2026_02_25_000001_create_license_purchases_table.php
+server.php
+.superpowers/
+/docs/

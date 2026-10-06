@@ -1,0 +1,193 @@
+<?php
+
+namespace App\Livewire\Admin;
+
+use App\Models\ActivityLog;
+use App\Models\Attendance;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Component;
+use Symfony\Component\Process\Process;
+use Symfony\Component\Process\Exception\ProcessFailedException;
+
+class SystemMaintenance extends Component
+{
+    use \Livewire\WithFileUploads;
+
+    public $cleanAttendances = false;
+    public $cleanActivityLogs = false;
+    public $cleanNotifications = false;
+    public $cleanStorage = false;
+    public $cleanNonAdminUsers = false;
+
+    public $backupFile;
+
+    // ... existing properties ...
+
+    public function restoreDatabase()
+    {
+        if (!Auth::user()->isSuperadmin) {
+            $this->dispatch('error', message: __('Unauthorized action.'));
+            return;
+        }
+
+        $this->validate([
+            'backupFile' => 'required|file|max:51200', // 50MB Max
+        ]);
+
+        try {
+            $path = $this->backupFile->getRealPath();
+            
+            // Validate extension manually strictly
+            $extension = $this->backupFile->getClientOriginalExtension();
+            if (strtolower($extension) !== 'sql') {
+                $this->dispatch('error', message: __('Invalid file type. Only .sql files are allowed.'));
+                return;
+            }
+
+            $dbHost = config('database.connections.mysql.host');
+            $dbPort = config('database.connections.mysql.port');
+            $dbName = config('database.connections.mysql.database');
+            $dbUser = config('database.connections.mysql.username');
+            $dbPassword = config('database.connections.mysql.password');
+
+            // Construct mysql command
+            $command = sprintf(
+                'mysql --user=%s --password=%s --host=%s --port=%s %s < %s',
+                escapeshellarg($dbUser),
+                escapeshellarg($dbPassword),
+                escapeshellarg($dbHost),
+                escapeshellarg($dbPort),
+                escapeshellarg($dbName),
+                escapeshellarg($path)
+            );
+
+            // Using process
+            $process = Process::fromShellCommandline($command);
+            $process->run();
+
+            if (!$process->isSuccessful()) {
+                throw new ProcessFailedException($process);
+            }
+
+            $this->dispatch('success', message: __('Database restored successfully! The page will reload.'));
+            
+            // Delay reload to let toast show
+            $this->js("setTimeout(function(){ window.location.reload(); }, 2000);");
+
+        } catch (\Exception $e) {
+            $this->dispatch('error', message: __('Restore failed: ') . $e->getMessage());
+        }
+    }
+
+    public function cleanDatabase()
+    {
+        if (!Auth::user()->isSuperadmin) {
+            $this->dispatch('error', message: __('Unauthorized action.'));
+            return;
+        }
+
+        if (!$this->cleanAttendances && !$this->cleanActivityLogs && !$this->cleanNonAdminUsers && !$this->cleanNotifications && !$this->cleanStorage) {
+            $this->dispatch('warning', message: __('Please select at least one option to clean.'));
+            return;
+        }
+
+        try {
+            // Disable Foreign Key Checks to allow truncation
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');   
+            
+            if ($this->cleanAttendances) {
+                Attendance::truncate();
+            }
+
+            if ($this->cleanActivityLogs) {
+                DB::table('activity_logs')->truncate();
+            }
+
+            if ($this->cleanNotifications) {
+                DB::table('notifications')->truncate();
+            }
+
+            if ($this->cleanNonAdminUsers) {
+                // Delete users who are NOT admin or superadmin
+                User::where('group', 'user')->delete();
+            }
+
+            // Re-enable Foreign Key Checks
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+            if ($this->cleanStorage) {
+                // Delete physical files
+                Storage::disk('public')->deleteDirectory('attendance-photos');
+                Storage::disk('public')->deleteDirectory('attachments');
+                // Recreate empty directories to prevent listing errors if any
+                Storage::disk('public')->makeDirectory('attendance-photos');
+                Storage::disk('public')->makeDirectory('attachments');
+            }
+
+            $this->dispatch('success', message: __('Selected data and files cleaned successfully.'));
+            
+            // Reset checkboxes
+            $this->cleanAttendances = false;
+            $this->cleanActivityLogs = false;
+            $this->cleanNotifications = false;
+            $this->cleanStorage = false;
+            $this->cleanNonAdminUsers = false;
+
+        } catch (\Exception $e) {
+            $this->dispatch('error', message: __('Failed to clean database: ') . $e->getMessage());
+        }
+    }
+
+    public function downloadBackup()
+    {
+        if (!Auth::user()->isSuperadmin) {
+            $this->dispatch('error', message: __('Unauthorized action.'));
+            return;
+        }
+
+        try {
+            $filename = 'backup-' . date('Y-m-d-H-i-s') . '.sql';
+            $path = storage_path('app/' . $filename);
+
+            $dbHost = config('database.connections.mysql.host');
+            $dbPort = config('database.connections.mysql.port');
+            $dbName = config('database.connections.mysql.database');
+            $dbUser = config('database.connections.mysql.username');
+            $dbPassword = config('database.connections.mysql.password');
+
+            // Construct mysqldump command
+            // Note: Using --no-tablespaces to avoid privilege errors on some shared hosts
+            $command = sprintf(
+                'mysqldump --user=%s --password=%s --host=%s --port=%s --no-tablespaces %s > %s',
+                escapeshellarg($dbUser),
+                escapeshellarg($dbPassword),
+                escapeshellarg($dbHost),
+                escapeshellarg($dbPort),
+                escapeshellarg($dbName),
+                escapeshellarg($path)
+            );
+
+            // mask password in log/output if needed, but here we just run it
+            $process = Process::fromShellCommandline($command);
+            $process->run();
+
+            if (!$process->isSuccessful()) {
+                throw new ProcessFailedException($process);
+            }
+
+            return response()->download($path)->deleteFileAfterSend(true);
+
+        } catch (\Exception $e) {
+            $this->dispatch('error', message: __('Backup failed: ') . $e->getMessage());
+        }
+    }
+
+    public function render()
+    {
+        return view('livewire.admin.system-maintenance')
+            ->layout('layouts.app');
+    }
+}

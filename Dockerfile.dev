@@ -1,0 +1,21 @@
+# Development image (PHP-FPM). The root Dockerfile is the production/Railway image and is left untouched.
+FROM php:8.3-fpm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl zip unzip \
+        libpng-dev libjpeg-dev libfreetype6-dev libonig-dev libxml2-dev libzip-dev libicu-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip intl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+ENV COMPOSER_HOME=/tmp/composer COMPOSER_ALLOW_SUPERUSER=1
+
+COPY docker/php/dev.ini /usr/local/etc/php/conf.d/zz-dev.ini
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && chmod +x /usr/local/bin/entrypoint.sh
+
+WORKDIR /var/www/html
+
+ENTRYPOINT ["entrypoint.sh"]
+CMD ["php-fpm"]
